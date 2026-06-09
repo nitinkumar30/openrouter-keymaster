@@ -229,7 +229,7 @@ class OpenRouterKeyProvider(KeyProvider):
                     "Regenerate at https://openrouter.ai/settings/management-api-keys"
                 )
             if resp.status_code == 429:
-                log.warning("Rate limited (attempt %d/%d), backing off\u2026", attempt, CFG.MAX_RETRIES)
+                log.warning("Rate limited (attempt %d/%d), backing off...", attempt, CFG.MAX_RETRIES)
                 time.sleep(CFG.RETRY_BACKOFF * attempt * 2)
                 continue
             if resp.status_code >= 500:
@@ -868,7 +868,7 @@ class KeyRotationManager:
             return True
 
     def rotate_key(self, project: str) -> str:
-        log.info("Performing key rotation\u2026")
+        log.info("Performing key rotation...")
         name = generate_key_name(project)
         return self._provider.create_key(name)
 
@@ -910,14 +910,14 @@ def resolve_provider(cfg: Config, preferred: ProviderType = ProviderType.AUTO) -
 
     raise ConfigurationError(
         "No authentication method configured.\n\n"
-        "Choose one:\n"
-        "  A) Set MANAGEMENT_API_KEY env var (recommended):\n"
-        "      1. Go to https://openrouter.ai/settings/management-api-keys\n"
-        "      2. Create a new Management API Key\n"
-        "      3. Set it: $env:MANAGEMENT_API_KEY = 'sk-or-v1-...'\n\n"
-        "  B) Set login credentials for browser automation:\n"
-        "      $env:OPENROUTER_EMAIL = 'your@email.com'\n"
-        "      $env:OPENROUTER_PASSWORD = 'your-password'\n"
+        "Run with --interactive (-i) to set up interactively:\n"
+        "  python main.py --interactive\n\n"
+        "Or configure manually:\n"
+        "  1) MANAGEMENT_API_KEY env var (recommended):\n"
+        "     $env:MANAGEMENT_API_KEY = 'sk-or-v1-...'\n\n"
+        "  2) Login credentials for browser automation:\n"
+        "     $env:OPENROUTER_EMAIL = 'your@email.com'\n"
+        "     $env:OPENROUTER_PASSWORD = 'your-password'\n"
     )
 
 
@@ -947,7 +947,7 @@ class KeyMaster:
 
     def run(self) -> str:
         log.info("=" * 50)
-        log.info("KeyMaster v1.0 \u2014 starting key generation workflow")
+        log.info("KeyMaster v1.0 -- starting key generation workflow")
         log.info("=" * 50)
 
         name = generate_key_name(self.cfg.PROJECT_NAME)
@@ -1022,13 +1022,13 @@ class KeyMaster:
             self.opencode.print_manual_instructions()
 
     def _validate_key(self, key: str) -> None:
-        log.info("Validating newly created key\u2026")
+        log.info("Validating newly created key...")
         valid = self.provider.validate_key(key)
         if valid:
             log.info("Key validation: PASSED")
         else:
             log.warning("Key validation returned unexpected result. The key may still work.")
-            log.warning("Proceeding \u2014 key was successfully created.")
+            log.warning("Proceeding -- key was successfully created.")
 
 
 # ---------------------------------------------------------------------------
@@ -1037,7 +1037,7 @@ class KeyMaster:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="KeyMaster \u2014 Automatic OpenRouter API Key Management",
+        description="KeyMaster -- Automatic OpenRouter API Key Management",
         epilog="Because manually copying API keys in 2026 is cyberpunk fax-machine energy.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1045,6 +1045,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--management-key", help="OpenRouter Management API key")
     parser.add_argument("--email", help="OpenRouter login email (for browser automation)")
     parser.add_argument("--password", help="OpenRouter login password (for browser automation)")
+    parser.add_argument("--interactive", "-i", action="store_true", help="Run interactive setup")
     parser.add_argument("--project", "-p", default=CFG.PROJECT_NAME, help=f"Project name (default: {CFG.PROJECT_NAME})")
     parser.add_argument("--rotate", "-r", action="store_true", help="Force key rotation")
     parser.add_argument("--status", "-s", action="store_true", help="Show current key status")
@@ -1056,6 +1057,83 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default=CFG.LOG_LEVEL)
 
     return parser.parse_args(argv)
+
+
+def interactive_setup() -> Config:
+    """Interactive CLI prompts to configure authentication and save to .env."""
+    cfg = Config()
+
+    print()
+    print("  KeyMaster Interactive Setup")
+    print("  " + "-" * 40)
+    print()
+    print("  Choose authentication method:")
+    print()
+    print("    1) Management API Key (recommended -- fast & reliable)")
+    print("    2) Browser automation (login with email & password)")
+    print()
+
+    while True:
+        choice = input("  Enter 1 or 2: ").strip()
+        if choice in ("1", "2"):
+            break
+        print("  Invalid choice. Enter 1 or 2.")
+
+    dot_env_path = Path(CFG.DOT_ENV_PATH)
+    lines: list[str] = []
+    if dot_env_path.exists():
+        lines = dot_env_path.read_text(encoding="utf-8").splitlines()
+
+    def upsert_env(key: str, value: str) -> None:
+        nonlocal lines
+        found = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith(f"{key}="):
+                lines[i] = f"{key}={value}"
+                found = True
+                break
+        if not found:
+            lines.append(f"{key}={value}")
+
+    if choice == "1":
+        print()
+        print("  Go to https://openrouter.ai/settings/management-api-keys")
+        print("  Create a new Management API Key, then paste it below.")
+        print()
+        key = input("  Management API Key: ").strip()
+        while not key:
+            print("  Key cannot be empty.")
+            key = input("  Management API Key: ").strip()
+        cfg.MANAGEMENT_API_KEY = key
+        upsert_env("MANAGEMENT_API_KEY", key)
+        print("  [OK] Management API key saved.")
+
+    else:
+        print()
+        email = input("  OpenRouter email: ").strip()
+        while not email:
+            print("  Email cannot be empty.")
+            email = input("  OpenRouter email: ").strip()
+        print()
+        password = input("  OpenRouter password: ").strip()
+        while not password:
+            print("  Password cannot be empty.")
+            password = input("  OpenRouter password: ").strip()
+
+        cfg.OPENROUTER_EMAIL = email
+        cfg.OPENROUTER_PASSWORD = password
+        upsert_env("OPENROUTER_EMAIL", email)
+        upsert_env("OPENROUTER_PASSWORD", password)
+        print("  [OK] Login credentials saved.")
+
+    dot_env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"  [OK] Credentials saved to {dot_env_path.name}")
+    print()
+    print("  " + "-" * 40)
+    print("  Setup complete! Generating your key now...")
+    print()
+
+    return cfg
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1070,6 +1148,15 @@ def main(argv: list[str] | None = None) -> int:
     CFG.HEADLESS = args.headless
     CFG.AUTO_UPDATE_ENV = args.update_env if hasattr(args, "update_env") else CFG.AUTO_UPDATE_ENV
     CFG.AUTO_UPDATE_OPENCODE = args.update_opencode if hasattr(args, "update_opencode") else CFG.AUTO_UPDATE_OPENCODE
+
+    has_auth = bool(CFG.MANAGEMENT_API_KEY) or bool(CFG.OPENROUTER_EMAIL and CFG.OPENROUTER_PASSWORD)
+    has_action = args.status or args.list_keys or args.rotate
+
+    if args.interactive or (not has_auth and not has_action):
+        interactive_cfg = interactive_setup()
+        CFG.MANAGEMENT_API_KEY = interactive_cfg.MANAGEMENT_API_KEY or CFG.MANAGEMENT_API_KEY
+        CFG.OPENROUTER_EMAIL = interactive_cfg.OPENROUTER_EMAIL or CFG.OPENROUTER_EMAIL
+        CFG.OPENROUTER_PASSWORD = interactive_cfg.OPENROUTER_PASSWORD or CFG.OPENROUTER_PASSWORD
 
     try:
         if args.status:
