@@ -304,14 +304,19 @@ class OpenRouterKeyProvider(KeyProvider):
 # ---------------------------------------------------------------------------
 
 class OpenRouterBrowserProvider(KeyProvider):
-    """Key provider using Playwright browser automation.
+    """Creates a Management API key via Playwright browser automation.
 
-    Logs into openrouter.ai with email/password, navigates to API keys,
-    creates a new key, and retrieves it from the page.
+    Flow:
+      1. Login at openrouter.ai with email/password (handles OTP/2FA)
+      2. Navigate to management keys page
+      3. Create a Management API key
+      4. Return the key string
+
+    The management key is saved to .env so all future runs use the API.
     """
 
     LOGIN_URL = "https://openrouter.ai/sign-in?redirect_url=https%3A%2F%2Fopenrouter.ai"
-    KEYS_URL = "https://openrouter.ai/workspaces/default/keys"
+    MANAGEMENT_KEYS_URL = "https://openrouter.ai/settings/management-keys"
 
     def __init__(self, email: str, password: str) -> None:
         if not email or not password:
@@ -364,7 +369,7 @@ class OpenRouterBrowserProvider(KeyProvider):
         page.wait_for_timeout(2000)
 
         self._login(page)
-        self._navigate_to_keys(page)
+        self._navigate_to_management_keys(page)
         key = self._create_and_retrieve_key(page, name)
         return key
 
@@ -577,33 +582,38 @@ class OpenRouterBrowserProvider(KeyProvider):
                 continue
         return False
 
-    def _navigate_to_keys(self, page: Any) -> None:
-        log.info("Navigating to API keys page...")
+    def _navigate_to_management_keys(self, page: Any) -> None:
+        log.info("Navigating to Management API keys page...")
         page.wait_for_timeout(1000)
 
-        keys_link_selectors = [
+        settings_or_keys_selectors = [
+            'a[href*="settings"]',
+            'a[href*="management"]',
+            'a:has-text("Settings")',
             'a[href*="keys"]',
-            'a:has-text("API Keys")',
             'a:has-text("Keys")',
-            'a[href*="api-keys"]',
+            'a:has-text("API Keys")',
             'a[href*="workspaces"]',
         ]
-        for sel in keys_link_selectors:
+        for sel in settings_or_keys_selectors:
             try:
                 links = page.query_selector_all(sel)
                 for link in links:
                     if link.is_visible():
                         href = link.get_attribute("href") or ""
-                        if "key" in href.lower() or "key" in (link.text_content() or "").lower():
-                            log.info("Clicking keys link: %s", sel)
+                        text = (link.text_content() or "").lower()
+                        if "key" in href.lower() or "key" in text or "setting" in href.lower():
+                            log.info("Clicking: %s", sel)
                             link.click()
                             page.wait_for_timeout(3000)
-                            return
+                            break
+                else:
+                    continue
+                break
             except Exception:
                 continue
 
-        log.info("No keys link found in sidebar, navigating directly to URL")
-        page.goto(self.KEYS_URL, wait_until="domcontentloaded", timeout=30000)
+        page.goto(self.MANAGEMENT_KEYS_URL, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(3000)
 
     def _create_and_retrieve_key(self, page: Any, key_name: str) -> str:
@@ -1021,8 +1031,66 @@ class KeyMaster:
         name = generate_key_name(self.cfg.PROJECT_NAME)
         log.info("Generated key name: %s", name)
 
-        key = self.provider.create_key(name)
+        provider = self.provider
 
+        if isinstance(provider, OpenRouterBrowserProvider):
+            key = self._run_browser_flow(provider, name)
+        else:
+            key = provider.create_key(name)
+            self._finalize_key(key)
+
+        return key
+
+    def _run_browser_flow(self, provider: OpenRouterBrowserProvider, key_name: str) -> str:
+        log.info("Browser flow: creating Management API key first...")
+        mgmt_key_name = f"keymaster-mgmt-{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        mgmt_key = provider.create_key(mgmt_key_name)
+
+        print()
+        print("  " + "=" * 50)
+        print("  Management API Key Created Successfully")
+        print("  " + "=" * 50)
+        print(f"  Name:       {mgmt_key_name}")
+        print(f"  Key:        sk-or-v1-****{mgmt_key[-4:]}")
+        print()
+        print("  Saving to .env for future use...")
+        print("  " + "=" * 50)
+        print()
+
+        self.cfg.MANAGEMENT_API_KEY = mgmt_key
+        self._save_management_key_to_env(mgmt_key)
+
+        self._provider = OpenRouterKeyProvider(mgmt_key)
+        log.info("Switched to Management API provider for regular key creation")
+
+        api_key = self._provider.create_key(key_name)
+        self._finalize_key(api_key)
+
+        print()
+        print("  Summary:")
+        print(f"    Management Key: sk-or-v1-****{mgmt_key[-4:]}  (saved to .env)")
+        print(f"    API Key:        sk-or-v1-****{api_key[-4:]}  (saved to API_KEYS.txt)")
+        print()
+
+        return api_key
+
+    def _save_management_key_to_env(self, mgmt_key: str) -> None:
+        dot_env_path = Path(self.cfg.DOT_ENV_PATH)
+        lines: list[str] = []
+        if dot_env_path.exists():
+            lines = dot_env_path.read_text(encoding="utf-8").splitlines()
+        found = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith("MANAGEMENT_API_KEY="):
+                lines[i] = f"MANAGEMENT_API_KEY={mgmt_key}"
+                found = True
+                break
+        if not found:
+            lines.append(f"MANAGEMENT_API_KEY={mgmt_key}")
+        dot_env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        log.info("Management API key saved to %s", dot_env_path.name)
+
+    def _finalize_key(self, key: str) -> None:
         self.store.append(key)
         log.info("Key saved to %s", self.cfg.API_KEYS_FILE)
 
@@ -1043,8 +1111,6 @@ class KeyMaster:
         print(f"  New API Key: sk-or-v1-****{key[-4:]}")
         print(f"  Stored in:   {self.cfg.API_KEYS_FILE}")
         print()
-
-        return key
 
     def rotate(self) -> str:
         key = self.rotator.rotate_key(self.cfg.PROJECT_NAME)
@@ -1138,7 +1204,7 @@ def interactive_setup() -> Config:
     print("  Choose authentication method:")
     print()
     print("    1) Management API Key (recommended -- fast & reliable)")
-    print("    2) Browser automation (login with email & password)")
+    print("    2) Browser automation (logs in, creates Management Key, saves to .env)")
     print()
 
     while True:
@@ -1177,6 +1243,12 @@ def interactive_setup() -> Config:
         print("  [OK] Management API key saved.")
 
     else:
+        print()
+        print("  KeyMaster will:")
+        print("    1. Log into OpenRouter with your credentials")
+        print("    2. Create a Management API Key via the browser")
+        print("    3. Save it to .env for future fast API access")
+        print("    4. Use it to generate your actual API key")
         print()
         email = input("  OpenRouter email: ").strip()
         while not email:

@@ -33,14 +33,14 @@ Instead of:
 
 …you run one command and move on with your life. 🚀
 
-**KeyMaster runs in two modes:**
+**KeyMaster runs in two modes, but option 2 auto-upgrades to option 1:**
 
 | Mode | How | Requires |
 |---|---|---|
 | **API** 🚀 | Direct REST calls via Management API | One-time Management API key setup (~30s) |
-| **Browser** 🌐 | Playwright automates the login + key creation | OpenRouter email & password |
+| **Browser** 🌐 | Playwright logs in, creates a **Management Key** automatically, saves it, then uses the API | OpenRouter email & password |
 
-> 💡 **API mode is faster and more reliable.** Browser mode is the fully-automated fallback if you don't want to create a Management API key manually.
+> 💡 **Browser mode only runs once.** It creates a Management API key for you, saves it to `.env`, then seamlessly switches to the fast API mode for all subsequent runs. You only see the browser once.
 
 ---
 
@@ -93,9 +93,9 @@ Instead of:
 
 ### How It Works
 
-1. **KeyMaster picks your auth method** — Management API if a key is set, otherwise browser automation.
-2. **API mode:** Talks directly to `POST /api/v1/keys` via OpenRouter's Management API.
-3. **Browser mode:** Launches Playwright, logs in with your email/password, clicks through to create a key.
+1. **KeyMaster picks your auth method** — Management API if a key is saved, otherwise browser automation.
+2. **Browser mode (first run only):** Launches Playwright, logs in (handles OTP/2FA!), navigates to `https://openrouter.ai/settings/management-keys`, creates a **Management API key**, saves it to `.env`, then **switches to API mode**.
+3. **API mode (every run after):** Talks directly to `POST /api/v1/keys` via the saved Management key — no browser needed.
 4. **Keys are auto-named** with timestamps so you know when each was created.
 5. **The key is appended** to `API_KEYS.txt` (never overwritten — full history preserved).
 6. **The `OPENROUTER_API_KEY` env var** is updated in the current process + `.env` file.
@@ -172,15 +172,19 @@ class Config:
 
 > ⚠️ **Warning:** Management keys are _not_ regular API keys. They cannot call completion endpoints. They are exclusively for managing other keys. Keep them safe.
 
-### Option B: Browser Automation
+### Option B: Browser Automation (Auto-Creates Management Key)
 
-If you'd rather skip the Management API setup, just provide your OpenRouter login credentials and KeyMaster will use Playwright to automate the browser:
+Provide your login credentials on the first run. KeyMaster will:
+1. Log into OpenRouter via browser
+2. Automatically create a Management API key for you
+3. Save it to `.env`
+4. Use it for all future API calls — never opens the browser again
 
-1. Set your email and password as environment variables or in the Config class
-2. Run `playwright install chromium` if you haven't already
-3. Run KeyMaster — it logs in, creates the key, and copies it
-
-> ⚠️ **Caution:** Browser automation is more fragile than the Management API. UI changes on OpenRouter's site could break the automation. If you hit issues, [create a Management API key](#option-a-management-api-key-recommended) instead.
+```bash
+$env:OPENROUTER_EMAIL = "your@email.com"
+$env:OPENROUTER_PASSWORD = "your-password"
+python main.py
+```
 
 ### Setting Credentials
 
@@ -221,28 +225,31 @@ KeyMaster auto-detects your auth method. This:
 - Updates OpenCode config if found
 - Validates the key works
 
-### Using Browser Automation
+### Using Browser Automation (First Run Only)
 
-If you're using email/password login instead of the Management API:
+On the first run, KeyMaster creates a **Management API key** for you via the browser,
+saves it to `.env`, then uses it to generate your actual API key. All subsequent runs
+skip the browser entirely and use the fast API.
 
 ```bash
-# Run with visible browser (helps with debugging)
-python main.py --email "your@email.com" --password "your-password" --visible
-
-# Or set env vars and just run
+# First run: browser creates management key, saves to .env, then creates your API key
 $env:OPENROUTER_EMAIL = "your@email.com"
 $env:OPENROUTER_PASSWORD = "your-password"
+python main.py
+
+# Second run onward: uses saved management key, no browser needed
 python main.py
 ```
 
 KeyMaster will:
-1. Launch Chromium (visible or headless)
-2. Navigate to openrouter.ai
-3. Click "Sign In" and enter your credentials
-4. Navigate to the API Keys page
-5. Click "New Key" and enter the auto-generated name
-6. Retrieve the key from the page
-7. Close the browser
+1. Launch Chromium (visible with `--visible`, headless by default)
+2. Navigate to the OpenRouter sign-in page
+3. Enter your credentials
+4. **If OTP/2FA is required, prompts you to enter the code**
+5. Navigate to the **Management API Keys** page
+6. Create a Management key (named `keymaster-mgmt-<timestamp>`)
+7. Save it to `.env` automatically
+8. Switch to API mode and create your actual API key
 
 > 💡 **Troubleshooting:** If the browser automation fails, a screenshot is saved to `screenshots/failure.png`. Check it to see what went wrong, then report the issue or switch to the Management API.
 
