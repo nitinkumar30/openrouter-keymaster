@@ -310,7 +310,7 @@ class OpenRouterBrowserProvider(KeyProvider):
     creates a new key, and retrieves it from the page.
     """
 
-    LOGIN_URL = "https://openrouter.ai/"
+    LOGIN_URL = "https://openrouter.ai/sign-in?redirect_url=https%3A%2F%2Fopenrouter.ai"
     KEYS_URL = "https://openrouter.ai/workspaces/default/keys"
 
     def __init__(self, email: str, password: str) -> None:
@@ -475,6 +475,8 @@ class OpenRouterBrowserProvider(KeyProvider):
         log.info("Waiting for login to complete...")
         page.wait_for_timeout(5000)
 
+        self._handle_otp_if_present(page)
+
         for _ in range(30):
             if self._is_logged_in(page):
                 log.info("Login successful")
@@ -487,6 +489,72 @@ class OpenRouterBrowserProvider(KeyProvider):
             "If 2FA/MFA is enabled, you may need to disable it or use "
             "a Management API key instead (faster and more reliable)."
         )
+
+    def _handle_otp_if_present(self, page: Any) -> None:
+        otp_selectors = [
+            'input[autocomplete="one-time-code"]',
+            'input[name*="otp" i]',
+            'input[name*="code" i]',
+            'input[name*="token" i]',
+            'input[inputmode="numeric"]',
+            'input[maxlength="6"]',
+            'input[placeholder*="code" i]',
+            'input[placeholder*="OTP" i]',
+            'input[placeholder*="2FA" i]',
+            'input:not([type="hidden"]):not([type="email"]):not([type="password"])',
+        ]
+
+        otp_input = None
+        for sel in otp_selectors:
+            try:
+                el = page.wait_for_selector(sel, timeout=5000)
+                if el and el.is_visible():
+                    otp_input = el
+                    break
+            except Exception:
+                continue
+
+        if otp_input is None:
+            return
+
+        log.info("OTP/2FA code input detected")
+        page.wait_for_timeout(1000)
+
+        print()
+        print("  " + "=" * 55)
+        print("  2-Factor Authentication Required")
+        print("  " + "=" * 55)
+        print()
+        print("  A verification code was sent to your email/authenticator app.")
+        print()
+        otp = input("  Enter 6-digit code: ").strip()
+        page.bring_to_front()
+        page.wait_for_timeout(500)
+
+        otp_input.fill(otp)
+        page.wait_for_timeout(500)
+
+        otp_submit_selectors = [
+            'button[type="submit"]',
+            'button:has-text("Verify")',
+            'button:has-text("Confirm")',
+            'button:has-text("Submit")',
+            'button:has-text("Continue")',
+        ]
+        for sel in otp_submit_selectors:
+            try:
+                btn = page.wait_for_selector(sel, timeout=3000)
+                if btn and btn.is_visible():
+                    btn.click()
+                    log.info("OTP submitted")
+                    page.wait_for_timeout(3000)
+                    return
+            except Exception:
+                continue
+
+        otp_input.press("Enter")
+        log.info("OTP submitted (via Enter)")
+        page.wait_for_timeout(3000)
 
     def _is_logged_in(self, page: Any) -> bool:
         indicator_selectors = [
