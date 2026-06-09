@@ -165,7 +165,7 @@ class Config:
 
 ### Option A: Management API Key (Recommended)
 
-1. Go to [openrouter.ai/settings/management-api-keys](https://openrouter.ai/settings/management-api-keys)
+1. Go to [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys)
 2. Click **"Create New Key"**
 3. Give it a memorable name (like `keymaster-management`)
 4. **Copy the key immediately** — it's shown only once
@@ -350,7 +350,7 @@ KeyMaster updates:
 | Problem | Solution |
 |---|---|
 | `No authentication method configured` | Set either `MANAGEMENT_API_KEY` or `OPENROUTER_EMAIL`+`OPENROUTER_PASSWORD` |
-| `Management API key is invalid` | Regenerate at [openrouter.ai/settings/management-api-keys](https://openrouter.ai/settings/management-api-keys) |
+| `Management API key is invalid` | Regenerate at [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys) |
 | `401 Unauthorized` | Your Management key is expired or wrong. Double-check. |
 | `Rate limited (429)` | Backoff is built-in. Wait and retry. |
 | OpenCode config not found | Check `OPENCODE_CONFIG_PATHS` in config. Or update manually. |

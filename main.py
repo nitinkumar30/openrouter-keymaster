@@ -35,7 +35,7 @@ import requests
 @dataclass
 class Config:
     # ── Authentication (choose one method) ─────────────────────────────────
-    # Option A: Management API key (create at openrouter.ai/settings/management-api-keys)
+    # Option A: Management API key (create at openrouter.ai/settings/management-keys)
     MANAGEMENT_API_KEY: str = ""
     # Option B: Login credentials (for browser automation)
     OPENROUTER_EMAIL: str = ""
@@ -192,7 +192,7 @@ class OpenRouterKeyProvider(KeyProvider):
         if not management_api_key:
             raise ConfigurationError(
                 "Management API key is required for API-based key creation. "
-                "Get one at https://openrouter.ai/settings/management-api-keys"
+                "Get one at https://openrouter.ai/settings/management-keys"
             )
         self._api_key = management_api_key
         self._session = requests.Session()
@@ -226,7 +226,7 @@ class OpenRouterKeyProvider(KeyProvider):
             if resp.status_code == 401:
                 raise AuthenticationError(
                     "Management API key is invalid or expired. "
-                    "Regenerate at https://openrouter.ai/settings/management-api-keys"
+                    "Regenerate at https://openrouter.ai/settings/management-keys"
                 )
             if resp.status_code == 429:
                 log.warning("Rate limited (attempt %d/%d), backing off...", attempt, CFG.MAX_RETRIES)
@@ -1097,7 +1097,7 @@ def interactive_setup() -> Config:
 
     if choice == "1":
         print()
-        print("  Go to https://openrouter.ai/settings/management-api-keys")
+        print("  Go to https://openrouter.ai/settings/management-keys")
         print("  Create a new Management API Key, then paste it below.")
         print()
         key = input("  Management API Key: ").strip()
