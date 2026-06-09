@@ -8,6 +8,8 @@
 
 KeyMaster is a zero-hassle, auto-magical utility that creates, stores, rotates, and injects OpenRouter API keys so you _never_ see _"API key is missing"_ again.
 
+![KeyMaster in action](working.png)
+
 ---
 
 ## 🧠 Why This Exists
