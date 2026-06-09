@@ -1,0 +1,43 @@
+# ── Environment ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── API Keys (contains live credentials) ────────────────────────────────
+API_KEYS.txt
+# But track the example template
+!API_KEYS.example.txt
+
+# ── Python ───────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── Virtual environments ─────────────────────────────────────────────────
+venv/
+.venv/
+env/
+virtualenv/
+
+# ── IDE / Editor ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS artifacts ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────────────
+*.log

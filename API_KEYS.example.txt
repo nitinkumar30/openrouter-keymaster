@@ -1,0 +1,4 @@
+# KeyMaster — API Key History
+# Each entry is timestamped and append-only.
+# Format: [YYYY-MM-DD HH:MM:SS] sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
